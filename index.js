@@ -70,13 +70,22 @@ client.on("interactionCreate", async interaction => {
       const data = await res.json();
       if (data.data && data.data.length > 0) {
         const user = data.data[0];
-        // Fetch FULL BODY avatar correctly - this URL is what Discord can actually load
+        // Try full body, if fails fallback to headshot so it ALWAYS shows
         let avatarUrl = null;
         try {
           const thumbRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${user.id}&size=420x420&format=Png&isCircular=false`);
           const thumbData = await thumbRes.json();
           avatarUrl = thumbData.data?.[0]?.imageUrl;
+          // If pending or null, try headshot
+          if (!avatarUrl || thumbData.data?.[0]?.state !== "Completed") {
+            const hsRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${user.id}&size=420x420&format=Png&isCircular=false`);
+            const hsData = await hsRes.json();
+            avatarUrl = hsData.data?.[0]?.imageUrl || avatarUrl;
+          }
         } catch {}
+        // Final fallback - old link that always works
+        if (!avatarUrl) avatarUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${user.id}&width=420&height=420&format=png`;
+
         const embed = new EmbedBuilder()
           .setColor(0x00FF00)
           .setTitle("Username Found - TAKEN")

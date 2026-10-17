@@ -39,6 +39,22 @@ client.once("ready", () => {
   client.user.setActivity("Bistro Blocks | /calculate /gpscan", { type: ActivityType.Playing });
 });
 
+function getAccountAge(created) {
+  const createdDate = new Date(created);
+  const now = new Date();
+  let years = now.getFullYear() - createdDate.getFullYear();
+  let months = now.getMonth() - createdDate.getMonth();
+  let totalMonths = years * 12 + months;
+  if (now.getDate() < createdDate.getDate()) totalMonths--;
+  const y = Math.floor(totalMonths / 12);
+  const m = totalMonths % 12;
+  let str = "";
+  if (y > 0) str += `${y} year${y > 1 ? "s" : ""}`;
+  if (m > 0) str += `${y > 0 ? ", " : ""}${m} month${m > 1 ? "s" : ""}`;
+  if (!str) str = "Less than a month";
+  return str;
+}
+
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -70,33 +86,56 @@ client.on("interactionCreate", async interaction => {
       const data = await res.json();
       if (data.data && data.data.length > 0) {
         const user = data.data[0];
-        // Try full body, if fails fallback to headshot so it ALWAYS shows
-        let avatarUrl = null;
-        try {
-          const thumbRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${user.id}&size=420x420&format=Png&isCircular=false`);
-          const thumbData = await thumbRes.json();
-          avatarUrl = thumbData.data?.[0]?.imageUrl;
-          // If pending or null, try headshot
-          if (!avatarUrl || thumbData.data?.[0]?.state !== "Completed") {
-            const hsRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${user.id}&size=420x420&format=Png&isCircular=false`);
-            const hsData = await hsRes.json();
-            avatarUrl = hsData.data?.[0]?.imageUrl || avatarUrl;
-          }
-        } catch {}
-        // Final fallback - old link that always works
-        if (!avatarUrl) avatarUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${user.id}&width=420&height=420&format=png`;
+        const userId = user.id;
+
+        // Fetch all info in parallel
+        const [infoRes, avatarRes, friendsRes, followersRes, followingRes] = await Promise.all([
+          fetch(`https://users.roblox.com/v1/users/${userId}`).then(r => r.json()).catch(() => null),
+          fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`).then(r => r.json()).catch(() => null),
+          fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`).then(r => r.json()).catch(() => null),
+          fetch(`https://friends.roblox.com/v1/users/${userId}/followers/count`).then(r => r.json()).catch(() => null),
+          fetch(`https://friends.roblox.com/v1/users/${userId}/followings/count`).then(r => r.json()).catch(() => null)
+        ]);
+
+        const description = infoRes?.description || "No description set";
+        const created = infoRes?.created || null;
+        const friends = friendsRes?.count ?? 0;
+        const followers = followersRes?.count ?? 0;
+        const following = followingRes?.count ?? 0;
+
+        let avatarUrl = avatarRes?.data?.[0]?.imageUrl || null;
+        if (!avatarUrl || avatarRes?.data?.[0]?.state !== "Completed") {
+          try {
+            const hsRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`).then(r => r.json());
+            avatarUrl = hsRes?.data?.[0]?.imageUrl || avatarUrl;
+          } catch {}
+        }
+        if (!avatarUrl) avatarUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
+
+        const createdStr = created ? new Date(created).toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Unknown";
+        const ageStr = created ? getAccountAge(created) : "Unknown";
 
         const embed = new EmbedBuilder()
-          .setColor(0x00FF00)
-          .setTitle("Username Found - TAKEN")
-          .setDescription(`**Username:** ${user.name}\n**Display:** ${user.displayName}\n**User ID:** ${user.id}\n**Profile:** https://www.roblox.com/users/${user.id}/profile`)
-          .setThumbnail(avatarUrl);
+          .setColor(0x2B2D31)
+          .setAuthor({ name: user.displayName, iconURL: avatarUrl })
+          .setTitle(user.displayName)
+          .setDescription(`[@${user.name}](https://www.roblox.com/users/${userId}/profile)`)
+          .setThumbnail(avatarUrl)
+          .addFields(
+            { name: `${friends} Friends • ${followers} Followers • ${following} Following`, value: "\u200b", inline: false },
+            { name: "✨ Description:", value: description.length > 1024 ? description.slice(0, 1021) + "..." : description, inline: false },
+            { name: "✨ Created:", value: createdStr, inline: false },
+            { name: "✨ Account Age:", value: `\`${ageStr}\``, inline: true },
+            { name: "✨ User ID:", value: `\`${userId}\``, inline: true }
+          );
+
         return interaction.editReply({ embeds: [embed] });
       } else {
         const embed = new EmbedBuilder().setColor(0x57F287).setTitle("Username AVAILABLE & Valid").setDescription(`**${name}** is available to claim!`);
         return interaction.editReply({ embeds: [embed] });
       }
     } catch (e) {
+      console.error(e);
       return interaction.editReply("Error checking username. Try again.");
     }
   }

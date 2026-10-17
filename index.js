@@ -70,7 +70,18 @@ client.on("interactionCreate", async interaction => {
       const data = await res.json();
       if (data.data && data.data.length > 0) {
         const user = data.data[0];
-        const embed = new EmbedBuilder().setColor(0x00FF00).setTitle("Username Found - TAKEN").setDescription(`**Username:** ${user.name}\n**Display:** ${user.displayName}\n**User ID:** ${user.id}\n**Profile:** https://www.roblox.com/users/${user.id}/profile`).setThumbnail(`https://www.roblox.com/avatar-thumbnail/image?userId=${user.id}&width=720&height=720&format=png`);
+        // Fetch FULL BODY avatar correctly - this URL is what Discord can actually load
+        let avatarUrl = null;
+        try {
+          const thumbRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${user.id}&size=420x420&format=Png&isCircular=false`);
+          const thumbData = await thumbRes.json();
+          avatarUrl = thumbData.data?.[0]?.imageUrl;
+        } catch {}
+        const embed = new EmbedBuilder()
+          .setColor(0x00FF00)
+          .setTitle("Username Found - TAKEN")
+          .setDescription(`**Username:** ${user.name}\n**Display:** ${user.displayName}\n**User ID:** ${user.id}\n**Profile:** https://www.roblox.com/users/${user.id}/profile`)
+          .setThumbnail(avatarUrl);
         return interaction.editReply({ embeds: [embed] });
       } else {
         const embed = new EmbedBuilder().setColor(0x57F287).setTitle("Username AVAILABLE & Valid").setDescription(`**${name}** is available to claim!`);
